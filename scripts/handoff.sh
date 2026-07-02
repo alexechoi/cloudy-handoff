@@ -39,7 +39,14 @@ while [ $# -gt 0 ]; do
 done
 
 case "$AGENT" in claude|codex) ;; *) die "unknown --agent '$AGENT' (want claude|codex)";; esac
-[ -n "$TASK" ] || die "no task given. Usage: handoff.sh [--agent claude|codex] [--resume <id>] \"<task>\""
+# A follow-up with no extra text just continues the prior session.
+if [ -z "$TASK" ]; then
+  if [ -n "$RESUME_ID" ]; then
+    TASK="Continue where you left off and finish the task."
+  else
+    die "no task given. Usage: handoff.sh [--agent claude|codex] [--resume <id>] \"<task>\""
+  fi
+fi
 
 require_cmd gcloud curl jq git base64
 load_config
