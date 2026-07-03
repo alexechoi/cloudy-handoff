@@ -100,6 +100,11 @@ git clone "$REPO_URL" "$WORK" 2>>"$RUN_LOG" || fail "git clone failed"
 cd "$WORK"
 
 if [ "$RESUME" = "1" ]; then
+  # The handoff branch only exists once the original run has pushed. A follow-up
+  # sent while the first run is still in flight would otherwise fail cryptically.
+  if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+    fail "resume: branch ${BRANCH} isn't on origin yet — the original run is probably still in progress (or made no commit). Wait until its PR is open, then follow up again."
+  fi
   git fetch origin "$BRANCH" 2>>"$RUN_LOG" && git checkout "$BRANCH" 2>>"$RUN_LOG" \
     || fail "could not check out existing branch ${BRANCH} for resume"
   # Restore the agent transcript so --resume has full context.

@@ -97,9 +97,19 @@ switch (cmd) {
   case 'bootstrap':
     process.exit(sh('bootstrap.sh', argv.slice(1)));
     break;
-  case 'resume':
-    process.exit(sh('handoff.sh', ['--resume', ...argv.slice(1)]));
-    break;
+  case 'resume': {
+    // Accept both `resume <id> <task…>` and `resume "<id> <task…>"` (the latter
+    // is what the /handoff-followup slash command sends as one quoted arg).
+    const joined = argv.slice(1).join(' ').trim();
+    const m = joined.match(/^(\S+)\s*([\s\S]*)$/);
+    if (!m || !m[1]) {
+      console.error('usage: cloudy-handoff resume <session-id> [task]');
+      process.exit(1);
+    }
+    const a = ['--resume', m[1]];
+    if (m[2]) a.push(m[2]);
+    process.exit(sh('handoff.sh', a));
+  }
   case 'doctor':
     process.exit(sh('doctor.sh', argv.slice(1)));
     break;
