@@ -68,7 +68,8 @@ Usage:
                         Provision your GCP project and install the /handoff commands.
   cloudy-handoff "<task>"                 Hand off the current git repo to the cloud.
   cloudy-handoff --agent codex "<task>"   Use Codex instead of Claude.
-  cloudy-handoff resume <session-id> ["<task>"]   Resume a previous session.
+  cloudy-handoff resume <session-id> ["<task>"]   Resume/queue onto a session.
+  cloudy-handoff cancel <session-id>      Stop a running session.
   cloudy-handoff doctor                   Check prerequisites (gcloud, git, auth…).
   cloudy-handoff bootstrap [flags]        (Re)provision GCP resources only.
   cloudy-handoff help                     Show this help.
@@ -110,6 +111,10 @@ switch (cmd) {
     if (m[2]) a.push(m[2]);
     process.exit(sh('handoff.sh', a));
   }
+  case 'cancel':
+    if (!argv[1]) { console.error('usage: cloudy-handoff cancel <session-id>'); process.exit(1); }
+    process.exit(sh('handoff.sh', ['--cancel', argv[1]]));
+    break;
   case 'doctor':
     process.exit(sh('doctor.sh', argv.slice(1)));
     break;
