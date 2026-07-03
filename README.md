@@ -73,16 +73,30 @@ tarball, the captured patch, run logs). See
 ## Setup (once per project)
 
 ```bash
-git clone https://github.com/alexechoi/cloudy-handoff && cd cloudy-handoff
-cp deploy/config.example.sh .cloudy-handoff.env   # optional; sensible defaults otherwise
-./scripts/bootstrap.sh        # provisions everything; add --build to force an image rebuild
-./scripts/install.sh          # puts `cloudy-handoff` on PATH + installs the slash commands
+npm install -g cloudy-handoff
+gcloud auth login && gcloud config set project YOUR_PROJECT_ID
+cloudy-handoff init          # confirm/create the project, provision, install /handoff
 ```
 
-`bootstrap.sh` is idempotent — it enables the required APIs and creates a
-least-privilege service account, a GCS bucket, a Firestore (native) database, an
-Artifact Registry repo, the credential secrets, and the Cloud Run Job. Re-run it
-anytime (e.g. after `git pull` to rebuild the image with `--build`).
+`cloudy-handoff init` runs the idempotent bootstrap (enables APIs; creates a
+least-privilege service account, GCS bucket, Firestore database, Artifact
+Registry repo, credential secrets, and the Cloud Run Job), then installs the
+`/handoff` slash commands and writes `~/.config/cloudy-handoff/config.env`.
+Re-run anytime; `cloudy-handoff bootstrap --build` forces a fresh image build.
+
+`init` flags: `--project <id>`, `--create-project <id>` (creates a new project
+with all APIs enabled), `--billing-account <id>`, `--region <r>`, `-y`.
+
+Run `cloudy-handoff doctor` anytime to check prerequisites.
+
+<details><summary>Install from source instead of npm</summary>
+
+```bash
+git clone https://github.com/alexechoi/cloudy-handoff && cd cloudy-handoff
+npm link                      # or: ./scripts/install.sh
+cloudy-handoff init
+```
+</details>
 
 ## Usage
 

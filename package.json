@@ -1,0 +1,44 @@
+{
+  "name": "cloudy-handoff",
+  "version": "0.1.0",
+  "description": "Hand off any Claude Code or Codex session into a Google Cloud Run job that runs until done — commits, pushes a branch, opens a PR. Bring-your-own-GCP.",
+  "bin": {
+    "cloudy-handoff": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "docker/",
+    "deploy/",
+    ".claude/",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "codex",
+    "cloud-run",
+    "gcp",
+    "agent",
+    "handoff",
+    "ai"
+  ],
+  "homepage": "https://github.com/alexechoi/cloudy-handoff#readme",
+  "bugs": {
+    "url": "https://github.com/alexechoi/cloudy-handoff/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexechoi/cloudy-handoff.git"
+  },
+  "license": "Apache-2.0"
+}
