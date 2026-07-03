@@ -54,7 +54,7 @@ load_config
 # --- preflight --------------------------------------------------------------
 gcloud auth print-access-token >/dev/null 2>&1 || die "gcloud is not authenticated — run 'gcloud auth login'"
 gcloud run jobs describe "$JOB_NAME" --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 \
-  || die "Cloud Run Job '$JOB_NAME' not found — run scripts/bootstrap.sh first"
+  || die "Cloud Run Job '$JOB_NAME' not found in ${PROJECT_ID} — run 'cloudy-handoff init' first"
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 CREATED_BY="$(gcloud config get-value account 2>/dev/null || echo unknown)"

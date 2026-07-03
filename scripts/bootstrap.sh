@@ -171,6 +171,22 @@ else
 fi
 ok "Cloud Run Job ready: ${JOB_NAME}"
 
+# Persist a global config so `cloudy-handoff` targets this project from any repo.
+CH_CONFIG="${HOME}/.config/cloudy-handoff/config.env"
+if [ ! -f "$CH_CONFIG" ]; then
+  mkdir -p "$(dirname "$CH_CONFIG")"
+  cat > "$CH_CONFIG" <<CFG
+# Written by cloudy-handoff bootstrap. Edit PROJECT_ID to target a different project.
+export PROJECT_ID="${PROJECT_ID}"
+export REGION="${REGION}"
+export CLAUDE_AUTH_MODE="${CLAUDE_AUTH_MODE}"
+export CODEX_AUTH_MODE="${CODEX_AUTH_MODE}"
+CFG
+  ok "wrote config → ${CH_CONFIG}"
+else
+  log "config already exists at ${CH_CONFIG} (left unchanged)"
+fi
+
 cat >&2 <<EOF
 
 ────────────────────────────────────────────────────────────
