@@ -35,7 +35,7 @@ export PREBUILT_IMAGE="${PREBUILT_IMAGE:-us-central1-docker.pkg.dev/cloudy-hando
 
 # --- Job sizing / limits ----------------------------------------------------
 export CPU="${CPU:-2}"
-export MEMORY="${MEMORY:-4Gi}"
+export MEMORY="${MEMORY:-8Gi}"
 # Cloud Run Job task timeout (max 168h/604800s). The agent gets a slightly
 # shorter internal MAX_HOURS guard so it can flush state before the hard kill.
 export TASK_TIMEOUT="${TASK_TIMEOUT:-14400s}"   # 4h

@@ -61,7 +61,7 @@ load_config() {
   : "${BUCKET:=${PROJECT_ID}-cloudy-handoff}"
   : "${FIRESTORE_DATABASE:=(default)}"
   : "${CPU:=2}"
-  : "${MEMORY:=4Gi}"
+  : "${MEMORY:=8Gi}"
   : "${TASK_TIMEOUT:=14400s}"
   : "${MAX_HOURS:=3.5}"
   : "${CLAUDE_AUTH_MODE:=subscription}"
@@ -265,4 +265,62 @@ fs_get() {
   [ -n "$token" ] || return 0
   curl -sf -H "Authorization: Bearer ${token}" "$(_fs_doc_url "$path")" 2>/dev/null \
     | jq -r ".fields[\"${field}\"].stringValue // empty" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Per-session instruction queue (Firestore array `pending`) for follow-ups.
+# Append is an atomic arrayUnion transform (safe from the local side); the
+# single active runner drains it (peek → process → remove). Elements are
+# "<ts>-<rand>:<base64(task)>" so identical tasks stay distinct.
+# ---------------------------------------------------------------------------
+_fs_doc_path() { printf 'projects/%s/databases/%s/documents/%s' "$PROJECT_ID" "$FIRESTORE_DATABASE" "$1"; }
+
+_fs_commit() { # <writes-json-array>
+  local token; token="$(gcp_access_token)"; [ -n "$token" ] || return 1
+  curl -sf -X POST -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    "https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${FIRESTORE_DATABASE}/documents:commit" \
+    -d "{\"writes\":${1}}" >/dev/null 2>&1
+}
+
+# queue_append <path> <task-text>
+queue_append() {
+  local path="$1" task="$2" b64 elem doc
+  b64="$(printf '%s' "$task" | base64 | tr -d '\n')"
+  elem="$(date -u +%Y%m%dT%H%M%S)-${RANDOM}:${b64}"
+  doc="$(_fs_doc_path "$path")"
+  _fs_commit "[{\"transform\":{\"document\":\"${doc}\",\"fieldTransforms\":[{\"fieldPath\":\"pending\",\"appendMissingElements\":{\"values\":[{\"stringValue\":\"${elem}\"}]}}]}}]" \
+    || warn "queue append failed (non-fatal)"
+}
+
+# queue_peek <path>  → first pending element (raw), or empty
+queue_peek() {
+  local token; token="$(gcp_access_token)"; [ -n "$token" ] || return 0
+  curl -sf -H "Authorization: Bearer ${token}" "$(_fs_doc_url "$1")" 2>/dev/null \
+    | jq -r '.fields.pending.arrayValue.values[0].stringValue // empty' 2>/dev/null || true
+}
+
+# queue_len <path>  → number of pending items
+queue_len() {
+  local token; token="$(gcp_access_token)"; [ -n "$token" ] || { echo 0; return 0; }
+  curl -sf -H "Authorization: Bearer ${token}" "$(_fs_doc_url "$1")" 2>/dev/null \
+    | jq -r '(.fields.pending.arrayValue.values // []) | length' 2>/dev/null || echo 0
+}
+
+# queue_remove <path> <element>
+queue_remove() {
+  local doc; doc="$(_fs_doc_path "$1")"
+  _fs_commit "[{\"transform\":{\"document\":\"${doc}\",\"fieldTransforms\":[{\"fieldPath\":\"pending\",\"removeAllFromArray\":{\"values\":[{\"stringValue\":\"${2}\"}]}}]}}]"
+}
+
+# queue_decode <element>  → original task text
+queue_decode() { printf '%s' "${1#*:}" | base64 -d 2>/dev/null; }
+
+# runner_alive <path>  → 0 if the session's recorded execution is still running
+runner_alive() {
+  local exec running
+  exec="$(fs_get "$1" currentExecution)"
+  [ -n "$exec" ] || return 1
+  running="$(gcloud run jobs executions describe "$exec" --region "$REGION" --project "$PROJECT_ID" \
+              --format='value(status.runningCount)' 2>/dev/null)"
+  [ -n "$running" ] && [ "$running" != "0" ]
 }
