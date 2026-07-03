@@ -1,6 +1,6 @@
 {
   "name": "cloudy-handoff",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Hand off any Claude Code or Codex session into a Google Cloud Run job that runs until done — commits, pushes a branch, opens a PR. Bring-your-own-GCP.",
   "bin": {
     "cloudy-handoff": "bin/cli.js"
