@@ -1,0 +1,20 @@
+# Cloud Build config used by scripts/bootstrap.sh to build the agent-runtime
+# image from source. Build context is the repo root so the Dockerfile can COPY
+# both docker/entrypoint.sh and scripts/lib.
+#
+#   gcloud builds submit . --config deploy/cloudbuild.yaml --substitutions _IMAGE=<image>
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_IMAGE}
+      - --file
+      - docker/Dockerfile
+      - .
+images:
+  - ${_IMAGE}
+options:
+  # Chromium makes this a large-ish build; give it a roomier machine.
+  machineType: E2_HIGHCPU_8
+timeout: 1800s

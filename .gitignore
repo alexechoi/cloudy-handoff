@@ -1,0 +1,12 @@
+# Local, per-user config (contains project ids / overrides — never committed)
+.cloudy-handoff.env
+config.env
+
+# Local credential scratch (should never exist, but belt-and-suspenders)
+*.token
+*.credentials.json
+auth.json
+
+# OS / editor cruft
+.DS_Store
+*.swp
