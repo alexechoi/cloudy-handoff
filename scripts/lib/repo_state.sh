@@ -21,11 +21,14 @@ detect_repo() {
 # Convert git@github.com:owner/repo(.git) → https://github.com/owner/repo.git
 # Leaves https:// URLs unchanged (minus a normalized .git suffix).
 normalize_git_url() {
-  local u="$1"
+  local u="$1" rest host path
   case "$u" in
     git@*:*)
-      u="https://${u#git@}"
-      u="${u/:/\/}"
+      # git@host:owner/repo(.git) → https://host/owner/repo(.git)
+      rest="${u#git@}"       # host:owner/repo.git
+      host="${rest%%:*}"     # host
+      path="${rest#*:}"      # owner/repo.git
+      u="https://${host}/${path}"
       ;;
     ssh://git@*)
       u="https://${u#ssh://git@}"

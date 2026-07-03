@@ -23,7 +23,7 @@ WORK=/workspace/repo
 RUN_LOG="$(mktemp)"
 TASK="$(printf '%s' "${TASK_B64:-}" | base64 -d 2>/dev/null || true)"
 CLAUDE_ARGS="${CLAUDE_ARGS:---dangerously-skip-permissions --verbose}"
-CODEX_ARGS="${CODEX_ARGS:---full-auto}"
+CODEX_ARGS="${CODEX_ARGS:---dangerously-bypass-approvals-and-sandbox --skip-git-repo-check}"
 
 fail() { set_status "$SESSION_ID" failed error="$1" finishedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit 1; }
 
@@ -71,6 +71,15 @@ if [ -s /secrets/codex/auth.json ] && [ "$(cat /secrets/codex/auth.json)" != "{}
   mkdir -p "${HOME}/.codex"
   cp /secrets/codex/auth.json "${HOME}/.codex/auth.json"
   chmod 600 "${HOME}/.codex/auth.json"
+fi
+
+# --- claude credentials file mount → ~/.claude/.credentials.json ------------
+# (Full local creds incl. refresh token, so Claude Code refreshes itself.)
+if [ -s /secrets/claude/.credentials.json ] && [ "$(cat /secrets/claude/.credentials.json)" != "{}" ]; then
+  mkdir -p "${HOME}/.claude"
+  cp /secrets/claude/.credentials.json "${HOME}/.claude/.credentials.json"
+  chmod 600 "${HOME}/.claude/.credentials.json"
+  log "restored Claude credentials from mount"
 fi
 
 # --- claude vertex mode -----------------------------------------------------

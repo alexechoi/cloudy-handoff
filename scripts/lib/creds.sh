@@ -7,17 +7,15 @@
 # already mounts them (bootstrap wired the mounts).
 
 # ---- Claude -----------------------------------------------------------------
-# Reads ~/.claude/.credentials.json or the macOS keychain and prints the
-# access token, or nothing if unavailable.
-_claude_token_from_store() {
-  local json=""
+# Prints the full local Claude credentials JSON (~/.claude/.credentials.json or
+# the macOS keychain), or nothing if unavailable. This JSON contains the refresh
+# token, so forwarding it lets Claude Code refresh itself in the cloud.
+_claude_credentials_json() {
   if [ -f "${HOME}/.claude/.credentials.json" ]; then
-    json="$(cat "${HOME}/.claude/.credentials.json")"
+    cat "${HOME}/.claude/.credentials.json"
   elif command -v security >/dev/null 2>&1; then
-    json="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
+    security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true
   fi
-  [ -n "$json" ] || return 0
-  printf '%s' "$json" | jq -r '.claudeAiOauth.accessToken // .accessToken // empty' 2>/dev/null || true
 }
 
 forward_claude_creds() {
@@ -34,18 +32,25 @@ forward_claude_creds() {
       printf '%s' "$key" | add_secret_version anthropic-api-key -
       log "claude auth: forwarded ANTHROPIC_API_KEY" ;;
     subscription|*)
-      local token="${CLAUDE_CODE_OAUTH_TOKEN:-}"
-      if [ -z "$token" ]; then
-        token="$(_claude_token_from_store)"
-        [ -n "$token" ] && warn "using short-lived token from local Claude creds; for a durable 1-year token run 'claude setup-token' and export CLAUDE_CODE_OAUTH_TOKEN"
+      # Prefer a durable setup-token if the user exported one …
+      if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+        printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | add_secret_version claude-oauth-token -
+        log "claude auth: forwarded CLAUDE_CODE_OAUTH_TOKEN (durable)"
+        return 0
       fi
-      if [ -z "$token" ] && [ -t 0 ]; then
-        warn "no Claude token found. Run 'claude setup-token' in another terminal, then:"
-        read -r -s -p "Paste CLAUDE_CODE_OAUTH_TOKEN: " token </dev/tty; printf '\n' >&2
+      # … otherwise forward the full local credentials JSON (incl. refresh token)
+      # so Claude Code can refresh itself in the container.
+      local json; json="$(_claude_credentials_json)"
+      if [ -z "$json" ] || ! printf '%s' "$json" | jq -e . >/dev/null 2>&1; then
+        [ -t 0 ] && { warn "no local Claude credentials found. Run 'claude setup-token', then:"; \
+                      read -r -s -p "Paste CLAUDE_CODE_OAUTH_TOKEN: " tok </dev/tty; printf '\n' >&2; \
+                      [ -n "$tok" ] && { printf '%s' "$tok" | add_secret_version claude-oauth-token -; \
+                                         log "claude auth: forwarded pasted token"; return 0; }; }
+        die "no Claude credentials found (run 'claude login' or 'claude setup-token')"
       fi
-      [ -n "$token" ] || die "no Claude credentials found (set CLAUDE_CODE_OAUTH_TOKEN or run 'claude setup-token')"
-      printf '%s' "$token" | add_secret_version claude-oauth-token -
-      log "claude auth: forwarded subscription OAuth token" ;;
+      printf '%s' "$json" | add_secret_version claude-creds -
+      warn "forwarding your Claude subscription credentials (with refresh token) — see docs/SECURITY.md for the ToS note"
+      log "claude auth: forwarded local Claude credentials (refreshable)" ;;
   esac
 }
 

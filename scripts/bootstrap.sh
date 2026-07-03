@@ -4,9 +4,13 @@
 # Bring-your-own-GCP: everything below is created in YOUR project. Run once:
 #
 #   gcloud auth login
-#   gcloud config set project <your-project>
-#   ./scripts/bootstrap.sh            # uses/builds the container image
-#   ./scripts/bootstrap.sh --build    # force a fresh image build from source
+#   ./scripts/bootstrap.sh                          # confirm the active project, then provision
+#   ./scripts/bootstrap.sh --project my-proj -y     # target a specific project, no prompt
+#   ./scripts/bootstrap.sh --create-project my-new  # create a new project (+link billing) first
+#   ./scripts/bootstrap.sh --build                  # force a fresh image build from source
+#
+# Flags: --project <id> | --create-project <id> | --billing-account <id>
+#        --region <r> | --build | -y/--yes (skip confirmation) | -h/--help
 #
 # Safe to re-run; each step checks for existing resources first.
 set -euo pipefail
@@ -16,18 +20,75 @@ REPO_ROOT="$(cd "${HERE}/.." && pwd)"
 # shellcheck source=scripts/lib/gcp.sh
 . "${HERE}/lib/gcp.sh"
 
-FORCE_BUILD=0
-for arg in "$@"; do
-  case "$arg" in
-    --build) FORCE_BUILD=1 ;;
-    -h|--help)
-      grep '^#' "$0" | sed 's/^# \{0,1\}//' | sed '/^!/d'; exit 0 ;;
-    *) die "unknown argument: $arg" ;;
+FORCE_BUILD=0; ASSUME_YES=0; CLI_PROJECT=""; CREATE_PROJECT=""; CLI_BILLING=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --build) FORCE_BUILD=1; shift ;;
+    --project) CLI_PROJECT="$2"; shift 2 ;;
+    --project=*) CLI_PROJECT="${1#*=}"; shift ;;
+    --create-project) CREATE_PROJECT="$2"; shift 2 ;;
+    --create-project=*) CREATE_PROJECT="${1#*=}"; shift ;;
+    --billing-account) CLI_BILLING="$2"; shift 2 ;;
+    --billing-account=*) CLI_BILLING="${1#*=}"; shift ;;
+    --region) REGION="$2"; shift 2 ;;
+    --region=*) REGION="${1#*=}"; shift ;;
+    -y|--yes) ASSUME_YES=1; shift ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//' | sed '/^!/d'; exit 0 ;;
+    *) die "unknown argument: $1" ;;
   esac
 done
 
 require_cmd gcloud curl jq
+
+# Choose a billing account: explicit flag, else the sole open account, else none.
+pick_billing() {
+  if [ -n "$CLI_BILLING" ]; then printf '%s' "$CLI_BILLING"; return; fi
+  local accts
+  accts="$(gcloud beta billing accounts list --filter='open=true' \
+            --format='value(name)' 2>/dev/null | sed 's#billingAccounts/##')"
+  [ "$(printf '%s\n' "$accts" | grep -c .)" = "1" ] && printf '%s' "$accts"
+}
+
+# Resolve PROJECT_ID from flags / active gcloud config, creating or confirming
+# as needed, before load_config's hard requirement kicks in.
+resolve_project() {
+  if [ -n "$CREATE_PROJECT" ]; then
+    create_project "$CREATE_PROJECT" "$(pick_billing)"
+    PROJECT_ID="$CREATE_PROJECT"; export PROJECT_ID; return
+  fi
+  PROJECT_ID="${CLI_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+  [ "$PROJECT_ID" = "(unset)" ] && PROJECT_ID=""
+
+  if [ -z "$PROJECT_ID" ]; then
+    { [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; } && die "no project set — pass --project <id> or --create-project <id>"
+    warn "no active project. Recent projects:"
+    gcloud projects list --format='value(projectId,name)' 2>/dev/null | head -15 >&2
+    read -r -p "Enter a project id (or 'new' to create one): " PROJECT_ID </dev/tty
+    if [ "$PROJECT_ID" = "new" ]; then
+      read -r -p "New project id: " PROJECT_ID </dev/tty
+      create_project "$PROJECT_ID" "$(pick_billing)"
+    fi
+  fi
+
+  if [ "$ASSUME_YES" -ne 1 ] && [ -t 0 ]; then
+    printf '→ provision cloudy-handoff in project "%s"? [y/N/(c)reate new] ' "$PROJECT_ID" >&2
+    local ans; read -r ans </dev/tty
+    case "$ans" in
+      y|Y) ;;
+      c|C) read -r -p "New project id: " PROJECT_ID </dev/tty; create_project "$PROJECT_ID" "$(pick_billing)" ;;
+      *) die "aborted by user" ;;
+    esac
+  fi
+  export PROJECT_ID
+}
+
+resolve_project
 load_config
+
+# Ensure the target project has billing (best-effort warning).
+if ! gcloud beta billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null | grep -qi true; then
+  warn "billing does not appear to be enabled on ${PROJECT_ID} — Cloud Build / Run will fail without it"
+fi
 
 log "project=${PROJECT_ID} region=${REGION} job=${JOB_NAME}"
 
@@ -57,12 +118,11 @@ ok "granted bucket-scoped objectAdmin to runtime SA"
 for s in claude-oauth-token anthropic-api-key openai-api-key git-token; do
   ensure_secret "$s"
 done
-# Codex auth.json is mounted as a file; seed a valid empty-ish JSON placeholder.
-if ! secret_exists codex-auth; then
-  ensure_secret codex-auth '{}'
-else
-  ensure_secret codex-auth   # (re)grant accessor
-fi
+# File-mounted secrets (Codex auth.json, Claude credentials.json) get a valid
+# empty-JSON placeholder so the mount is stable before the first handoff.
+for s in codex-auth claude-creds; do
+  if ! secret_exists "$s"; then ensure_secret "$s" '{}'; else ensure_secret "$s"; fi
+done
 
 # 5. Container image --------------------------------------------------------
 image_exists() { gcloud artifacts docker images describe "$IMAGE" >/dev/null 2>&1; }
@@ -85,6 +145,7 @@ JOB_SECRETS+=",ANTHROPIC_API_KEY=anthropic-api-key:latest"
 JOB_SECRETS+=",OPENAI_API_KEY=openai-api-key:latest"
 JOB_SECRETS+=",GIT_TOKEN=git-token:latest"
 JOB_SECRETS+=",/secrets/codex/auth.json=codex-auth:latest"
+JOB_SECRETS+=",/secrets/claude/.credentials.json=claude-creds:latest"
 
 JOB_ENV="BUCKET=${BUCKET},FIRESTORE_DATABASE=${FIRESTORE_DATABASE}"
 JOB_ENV+=",MAX_HOURS=${MAX_HOURS},CLAUDE_AUTH_MODE=${CLAUDE_AUTH_MODE}"

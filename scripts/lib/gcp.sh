@@ -101,6 +101,28 @@ gcp_access_token() {
 # ---------------------------------------------------------------------------
 # Provisioning helpers (idempotent). Local-only; use the gcloud CLI.
 # ---------------------------------------------------------------------------
+# create_project <project-id> [billing-account-id]
+create_project() {
+  local pid="$1" billing="${2:-}"
+  if gcloud projects describe "$pid" >/dev/null 2>&1; then
+    ok "project ${pid} already exists"
+  else
+    log "creating project ${pid}"
+    gcloud projects create "$pid" --name "$pid" \
+      || die "could not create project ${pid} (id may be taken globally, or you lack createProject on the org/folder)"
+    ok "project created"
+  fi
+  if [ -n "$billing" ]; then
+    if gcloud beta billing projects link "$pid" --billing-account "$billing" >/dev/null 2>&1; then
+      ok "linked billing account ${billing}"
+    else
+      warn "could not link billing ${billing} — enable billing on ${pid} manually before continuing"
+    fi
+  else
+    warn "no billing account chosen — pass --billing-account <id> or link billing manually"
+  fi
+}
+
 ensure_apis() {
   log "enabling APIs (idempotent): $*"
   gcloud services enable "$@" --project "$PROJECT_ID" -q
