@@ -315,12 +315,14 @@ queue_remove() {
 # queue_decode <element>  → original task text
 queue_decode() { printf '%s' "${1#*:}" | base64 -d 2>/dev/null; }
 
-# runner_alive <path>  → 0 if the session's recorded execution is still running
+# runner_alive <path>  → 0 if the session's recorded execution hasn't finished.
+# Uses the Completed condition (not runningCount) so an execution still importing
+# its image — runningCount 0 but not yet started — still counts as alive.
 runner_alive() {
-  local exec running
+  local exec completed
   exec="$(fs_get "$1" currentExecution)"
   [ -n "$exec" ] || return 1
-  running="$(gcloud run jobs executions describe "$exec" --region "$REGION" --project "$PROJECT_ID" \
-              --format='value(status.runningCount)' 2>/dev/null)"
-  [ -n "$running" ] && [ "$running" != "0" ]
+  completed="$(gcloud run jobs executions describe "$exec" --region "$REGION" --project "$PROJECT_ID" \
+                --format=json 2>/dev/null | jq -r '.status.conditions[]?|select(.type=="Completed")|.status' 2>/dev/null)"
+  [ "$completed" != "True" ] && [ "$completed" != "False" ]
 }
