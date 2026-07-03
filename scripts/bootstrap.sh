@@ -93,15 +93,15 @@ fi
 log "project=${PROJECT_ID} region=${REGION} job=${JOB_NAME}"
 
 # 1. APIs -------------------------------------------------------------------
-ensure_apis run.googleapis.com secretmanager.googleapis.com \
-  artifactregistry.googleapis.com storage.googleapis.com \
-  firestore.googleapis.com cloudbuild.googleapis.com
+APIS=(run.googleapis.com secretmanager.googleapis.com storage.googleapis.com firestore.googleapis.com)
+# Artifact Registry + Cloud Build are only needed when building from source.
+[ "$FORCE_BUILD" -eq 1 ] && APIS+=(artifactregistry.googleapis.com cloudbuild.googleapis.com)
+ensure_apis "${APIS[@]}"
 
 # 2. Core resources ---------------------------------------------------------
 ensure_service_account
 ensure_bucket
 ensure_firestore
-ensure_ar_repo
 
 # 3. IAM for the runtime SA (least privilege) -------------------------------
 # Firestore read/write. (Firestore has no per-database IAM, so this is project
@@ -125,8 +125,11 @@ for s in codex-auth claude-creds; do
 done
 
 # 5. Container image --------------------------------------------------------
-image_exists() { gcloud artifacts docker images describe "$IMAGE" >/dev/null 2>&1; }
-if [ "$FORCE_BUILD" -eq 1 ] || ! image_exists; then
+# Default: the public prebuilt image (no build, no per-user Artifact Registry).
+# --build: build from the bundled source into the user's own Artifact Registry.
+if [ "$FORCE_BUILD" -eq 1 ]; then
+  IMAGE="$USER_IMAGE"; export IMAGE
+  ensure_ar_repo
   log "building image via Cloud Build → ${IMAGE}"
   gcloud builds submit "$REPO_ROOT" \
     --config "${REPO_ROOT}/deploy/cloudbuild.yaml" \
@@ -134,7 +137,7 @@ if [ "$FORCE_BUILD" -eq 1 ] || ! image_exists; then
     --project "$PROJECT_ID"
   ok "image built: ${IMAGE}"
 else
-  ok "image already present: ${IMAGE} (use --build to rebuild)"
+  log "using prebuilt public image: ${IMAGE}"
 fi
 
 # 6. Cloud Run Job ----------------------------------------------------------
