@@ -25,10 +25,13 @@ export BUCKET="${BUCKET:-${PROJECT_ID:-unset}-cloudy-handoff}"
 export FIRESTORE_DATABASE="${FIRESTORE_DATABASE:-(default)}"
 
 # --- Container image --------------------------------------------------------
-# If set to a published image, bootstrap uses it as-is. If empty, bootstrap
-# builds from source (docker/Dockerfile) into your Artifact Registry via
-# Cloud Build. `bootstrap.sh --build` always forces a rebuild.
+# If empty (default), bootstrap uses the public prebuilt image (fast: Cloud Run
+# pulls it directly, no build). `cloudy-handoff bootstrap --build` instead builds
+# from source (docker/Dockerfile) into your OWN Artifact Registry. Set IMAGE to
+# pin a specific published image.
 export IMAGE="${IMAGE:-}"
+# Override only if you fork/host your own public image.
+export PREBUILT_IMAGE="${PREBUILT_IMAGE:-us-central1-docker.pkg.dev/cloudy-handoff-public/images/cloudy-handoff:latest}"
 
 # --- Job sizing / limits ----------------------------------------------------
 export CPU="${CPU:-2}"

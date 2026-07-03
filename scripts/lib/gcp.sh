@@ -68,12 +68,15 @@ load_config() {
   : "${CODEX_AUTH_MODE:=subscription}"
 
   SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-  if [ -z "${IMAGE:-}" ]; then
-    IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${JOB_NAME}:latest"
-  fi
+  # Public prebuilt image (Cloud Run pulls it cross-project). `--build` overrides
+  # this with a from-source image in the user's own Artifact Registry.
+  : "${PREBUILT_IMAGE:=us-central1-docker.pkg.dev/cloudy-handoff-public/images/cloudy-handoff:latest}"
+  # The path used when building from source into the user's own project.
+  USER_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${JOB_NAME}:latest"
+  if [ -z "${IMAGE:-}" ]; then IMAGE="$PREBUILT_IMAGE"; fi
   export PROJECT_ID REGION JOB_NAME AR_REPO SA_NAME SA_EMAIL BUCKET \
          FIRESTORE_DATABASE CPU MEMORY TASK_TIMEOUT MAX_HOURS IMAGE \
-         CLAUDE_AUTH_MODE CODEX_AUTH_MODE
+         PREBUILT_IMAGE USER_IMAGE CLAUDE_AUTH_MODE CODEX_AUTH_MODE
 
   [ -n "$PROJECT_ID" ] || die "PROJECT_ID is not set (run 'gcloud config set project <id>' or edit .cloudy-handoff.env)"
 }
